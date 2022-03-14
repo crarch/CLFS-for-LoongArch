@@ -12,6 +12,7 @@
 
 ```shell
 sudo apt install gdb git autoconf python3-dev python3-pip fakeroot build-essential ncurses-dev xz-utils libssl-dev bc flex libelf-dev bison textinfo make gcc g++ curl
+sudo apt install libgmp3-dev libmpc-dev	libmpfr-dev
 ```
 
 ## 设置环境变量
@@ -26,9 +27,14 @@ export MABI="ilp32"
 export ARCH=loongarch
 export CROSS_COMPILE=$CROSS_TARGET-
 export DOWNLOADDIR=~/linux/downloads
+
+mkdir -p ${SYSDIR}
+mkdir -p ${BUILDDIR}
+mkdir -p ${DOWNLOADDIR}
+mkdir -p ${SYSDIR}/cross-tools
 ```
 
-建议设置为`~/linux/envs.sh`，然后在`bashrc`等`*rc`文件中设置`source ~/linux/envs.sh`。
+建议设置为`~/linux-envs.sh`，然后在`bashrc`等`*rc`文件中设置`source ~/linux-envs.sh`。
 
 ## 制作交叉编译工具链
 
@@ -40,7 +46,7 @@ export DOWNLOADDIR=~/linux/downloads
 pushd ${DOWNLOADDIR}
 	git clone https://github.com/crarch/linux -b la32 --depth 1
 	pushd ${DOWNLOADDIR}/linux
-        make mrproper
+ 	   	make mrproper CROSS_TARGET= ARCH=x86_64 CC=gcc AR=ar AS=as
         make ARCH=loongarch INSTALL_HDR_PATH=headers headers_install
         find headers/include -name '.*' -delete
         mkdir -pv ${SYSDIR}/sysroot/usr/include
@@ -72,49 +78,7 @@ pushd ${DOWNLOADDIR}
 popd
 ```
 
-### GMP
-
-```shell
-pushd ${DOWNLOADDIR}
-	curl -o gmp-6.2.1.tar.xz https://ftp.gnu.org/gnu/gmp/gmp-6.2.1.tar.xz
-	tar xvf gmp-6.2.1.tar.xz -C ${DOWNLOADDIR}
-	pushd ${DOWNLOADDIR}/gmp-6.2.1
-        ./configure --prefix=${SYSDIR}/cross-tools --enable-cxx --disable-static
-        make -j
-        make install
-	popd
-popd
-```
-
-### MPFR
-
-```shell
-pushd ${DOWNLOADDIR}
-	curl -o mpfr-4.1.0.tar.xz https://www.mpfr.org/mpfr-4.1.0/mpfr-4.1.0.tar.xz
-	tar xvf mpfr-4.1.0.tar.xz -C ${DOWNLOADDIR}
-	pushd ${DOWNLOADDIR}/mpfr-4.1.0
-        ./configure --prefix=${SYSDIR}/cross-tools --disable-static --with-gmp=${SYSDIR}/cross-tools
-        make -j
-        make install
-	popd
-popd
-```
-
-### MPC
-
-```shell
-pushd ${DOWNLOADDIR}
-	curl -o mpc-1.2.1.tar.gz https://ftp.gnu.org/gnu/mpc/mpc-1.2.1.tar.gz
-	tar xvf mpc-1.2.1.tar.gz -C ${DOWNLOADDIR}
-	pushd ${DOWNLOADDIR}/mpc-1.2.1
-        ./configure --prefix=${SYSDIR}/cross-tools --enable-cxx --disable-static
-        make -j
-        make install
-	popd
-popd
-```
-
-### GCC 第一次编译
+### GCC 编译
 
 ```shell
 pushd ${DOWNLOADDIR}
@@ -133,7 +97,7 @@ pushd ${DOWNLOADDIR}
                 --disable-libsanitizer --disable-libquadmath --disable-threads \
                 --disable-target-zlib --with-system-zlib --enable-checking=release \
                 --enable-languages=c
-            make all-gcc -j
+            make all-gcc -j 16
             make all-target-libgcc -j
             make install-strip-gcc -j
             make install-strip-target-libgcc -j
@@ -142,8 +106,50 @@ pushd ${DOWNLOADDIR}
 popd
 ```
 
-1. 使用`newlib`库编译`glibc`
-2. 仅支持`c`语言
+```shell
+pushd ${DOWNLOADDIR}
+	git clone https://github.com/crarch/gcc -b la32 --depth 1
+	pushd ${DOWNLOADDIR}/gcc
+		mkdir -p build
+		pushd build
+			echo building gcc for $CROSS_TARGET
+            AR=ar LDFLAGS="-Wl,-rpath,${SYSDIR}/cross-tools/lib" \
+                ../configure --prefix=${SYSDIR}/cross-tools \
+                --build=${CROSS_HOST} --host=${CROSS_HOST} \
+                --target=${CROSS_TARGET} --disable-nls \
+                --with-newlib --disable-shared --with-sysroot=${SYSDIR}/sysroot \
+                --disable-decimal-float --disable-libgomp --disable-libitm \
+                --disable-libsanitizer --disable-libquadmath --disable-threads \
+                --disable-target-zlib --with-system-zlib --enable-checking=release \
+                --enable-languages=c
+            make all-gcc -j 16
+            make all-target-libgcc -j
+            make install-strip-gcc -j
+            make install-strip-target-libgcc -j
+		popd
+	popd
+popd
+```
 
-### GCC 第二次编译
+```shell
+pushd ${DOWNLOADDIR}
+	git clone https://github.com/crarch/gcc -b la32 --depth 1
+	pushd ${DOWNLOADDIR}/gcc
+		mkdir -p build
+		pushd build
+			echo building gcc for $CROSS_TARGET
+            AR=ar LDFLAGS="-Wl,-rpath,${SYSDIR}/cross-tools/lib" \
+                ../configure --prefix=${SYSDIR}/cross-tools \
+                --build=${CROSS_HOST} --host=${CROSS_HOST} \
+                --target=${CROSS_TARGET} \
+                --with-sysroot=${SYSDIR}/sysroot \
+                --enable-__cxa_atexit --enable-threads=posix --with-system-zlib \
+                --enable-libstdcxx-time --enable-checking=release \
+                --enable-languages=c,c++,fortran,objc,obj-c++,lto
+            make -j 16
+            make install-strip
+		popd
+	popd
+popd
+```
 
