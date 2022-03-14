@@ -76,7 +76,74 @@ popd
 
 ```shell
 pushd ${DOWNLOADDIR}
-	curl
+	curl -o gmp-6.2.1.tar.xz https://ftp.gnu.org/gnu/gmp/gmp-6.2.1.tar.xz
+	tar xvf gmp-6.2.1.tar.xz -C ${DOWNLOADDIR}
+	pushd ${DOWNLOADDIR}/gmp-6.2.1
+        ./configure --prefix=${SYSDIR}/cross-tools --enable-cxx --disable-static
+        make -j
+        make install
+	popd
 popd
 ```
+
+### MPFR
+
+```shell
+pushd ${DOWNLOADDIR}
+	curl -o mpfr-4.1.0.tar.xz https://www.mpfr.org/mpfr-4.1.0/mpfr-4.1.0.tar.xz
+	tar xvf mpfr-4.1.0.tar.xz -C ${DOWNLOADDIR}
+	pushd ${DOWNLOADDIR}/mpfr-4.1.0
+        ./configure --prefix=${SYSDIR}/cross-tools --disable-static --with-gmp=${SYSDIR}/cross-tools
+        make -j
+        make install
+	popd
+popd
+```
+
+### MPC
+
+```shell
+pushd ${DOWNLOADDIR}
+	curl -o mpc-1.2.1.tar.gz https://ftp.gnu.org/gnu/mpc/mpc-1.2.1.tar.gz
+	tar xvf mpc-1.2.1.tar.gz -C ${DOWNLOADDIR}
+	pushd ${DOWNLOADDIR}/mpc-1.2.1
+        ./configure --prefix=${SYSDIR}/cross-tools --enable-cxx --disable-static
+        make -j
+        make install
+	popd
+popd
+```
+
+### GCC 第一次编译
+
+```shell
+pushd ${DOWNLOADDIR}
+	git clone https://github.com/crarch/gcc -b la32 --depth 1
+	pushd ${DOWNLOADDIR}/gcc
+		mkdir -p build
+		pushd build
+			echo building gcc for $CROSS_TARGET
+            AR=ar LDFLAGS="-Wl,-rpath,${SYSDIR}/cross-tools/lib" \
+                ../configure --prefix=${SYSDIR}/cross-tools --build=${CROSS_HOST} --host=${CROSS_HOST} \
+                --target=${CROSS_TARGET} --disable-nls \
+                --with-mpfr=${SYSDIR}/cross-tools --with-gmp=${SYSDIR}/cross-tools \
+                --with-mpc=${SYSDIR}/cross-tools \
+                --with-newlib --disable-shared --with-sysroot=${SYSDIR}/sysroot \
+                --disable-decimal-float --disable-libgomp --disable-libitm \
+                --disable-libsanitizer --disable-libquadmath --disable-threads \
+                --disable-target-zlib --with-system-zlib --enable-checking=release \
+                --enable-languages=c
+            make all-gcc -j
+            make all-target-libgcc -j
+            make install-strip-gcc -j
+            make install-strip-target-libgcc -j
+		popd
+	popd
+popd
+```
+
+1. 使用`newlib`库编译`glibc`
+2. 仅支持`c`语言
+
+### GCC 第二次编译
 
