@@ -38,6 +38,41 @@
 
 　　为了使制作系统讲解的过程中尽量减少额外的因素导致的问题，我们在一个“重新搭建的”Fedora系统中进行制作，在一个支持dnf命令工具的系统中使用如下命令进行搭建：
 
+```shell
+sudo apt install -y python3-dev git fakeroot build-essential ncurses-dev xz-utils libssl-dev bc flex libelf-dev bison
+```
+
+```shell
+dnf install @core @c-development rpm-build git python3-devel texinfo \
+    zlib-devel xz-lzma-compat gettext-devel perl-FindBin \
+    gdbm-devel expat-devel gobject-introspection-devel \
+    libgusb-devel libusb-devel libudev-devel libgudev-devel \
+    perl-Pod-Html rpm-devel tcl ncurses-devel openssl-devel libxslt bc \
+    wget docbook-style-xsl meson ninja-build python3-jinja2 gperf rsync \
+    xcursorgen mkfontscale wayland-devel itstool xmlto doxygen lynx \
+    atk-devel at-spi2-core-devel gdk-pixbuf2-devel harfbuzz-devel \
+    wayland-protocols-devel libxkbcommon-devel libepoxy-devel at-spi2-atk-devel \
+    sassc dbus-glib libatomic gtk3-devel libnotify-devel gtk-doc polkit-devel \
+    cups-devel libunistring-devel gc-devel autogen sqlite protobuf-c-compiler emacs \
+    --releasever 33 --nogpgcheck
+```
+
+```shell
+dnf install @core @c-development rpm-build git python3-devel texinfo \
+    zlib-devel xz-lzma-compat gettext-devel perl-FindBin \
+    gdbm-devel expat-devel gobject-introspection-devel \
+    libgusb-devel libusb-devel libudev-devel libgudev-devel \
+    perl-Pod-Html rpm-devel tcl ncurses-devel openssl-devel libxslt bc \
+    wget docbook-style-xsl meson ninja-build python3-jinja2 gperf rsync \
+    xcursorgen mkfontscale wayland-devel itstool xmlto doxygen lynx \
+    atk-devel at-spi2-core-devel gdk-pixbuf2-devel harfbuzz-devel \
+    wayland-protocols-devel libxkbcommon-devel libepoxy-devel at-spi2-atk-devel \
+    sassc dbus-glib libatomic gtk3-devel libnotify-devel gtk-doc polkit-devel \
+    cups-devel libunistring-devel gc-devel autogen sqlite protobuf-c-compiler emacs \
+    --installroot ${HOME}/la-clfs \
+    --releasever 33 --nogpgcheck
+```
+
 ```sh
 export DISTRO_URL=https://mirrors.bfsu.edu.cn/fedora/releases/34/Everything/x86_64/os/
 sudo dnf install @core @c-development rpm-build git python3-devel texinfo \
@@ -159,6 +194,22 @@ unset CFLAGS
 unset CXXFLAGS
 EOF
 ```
+
+```shell
+# for loongarch 32:
+export SYSDIR=~/linux/la32
+export BUILDDIR=$SYSDIR/build
+export LC_ALL=POSIX
+#export CROSS_HOST="$(echo $MACHTYPE | sed "s/$(echo $MACHTYPE | cut -d- -f2)/cross/")"
+export CROSS_HOST=x86_64
+export CROSS_TARGET="loongarch32-unknown-elf"
+export MABI="ilp32"
+export ARCH=loongarch
+export CROSS_COMPILE=$CROSS_TARGET-
+export DOWNLOADDIR=~/linux/downloads
+```
+
+
 
 　　这里设置了几个环境变量，下面简单介绍这些变量的含义：
 
@@ -458,7 +509,7 @@ tar -czf ${DOWNLOADDIR}/binutils-2.37.tar.gz binutils-2.37
 　　按以下步骤制作交叉编译工具链中的Binutils并安装到存放交叉工具链的目录中。
 
 ```sh
-tar xvf ${DOWNLOADDIR}/binutils-2.37.tar.xz -C ${BUILDDIR}
+tar xzf ${DOWNLOADDIR}/binutils-2.37.tar.gz -C ${BUILDDIR}
 pushd ${BUILDDIR}/binutils-2.37
 	rm -rf gdb* libdecnumber readline sim
 	mkdir build
@@ -481,7 +532,7 @@ popd
 tar xvf ${DOWNLOADDIR}/gmp-6.2.1.tar.xz -C ${BUILDDIR}
 pushd ${BUILDDIR}/gmp-6.2.1
 	./configure --prefix=${SYSDIR}/cross-tools --enable-cxx --disable-static
-	make
+	make -j 16
 	make install
 popd
 ```
@@ -493,7 +544,7 @@ popd
 tar xvf ${DOWNLOADDIR}/mpfr-4.1.0.tar.xz -C ${BUILDDIR}
 pushd ${BUILDDIR}/mpfr-4.1.0
 	./configure --prefix=${SYSDIR}/cross-tools --disable-static --with-gmp=${SYSDIR}/cross-tools
-	make
+	make -j 16
 	make install
 popd
 ```
@@ -505,7 +556,7 @@ popd
 tar xvf ${DOWNLOADDIR}/mpc-1.2.1.tar.gz -C ${BUILDDIR}
 pushd ${BUILDDIR}/mpc-1.2.1 
 	./configure --prefix=${SYSDIR}/cross-tools --disable-static --with-gmp=${SYSDIR}/cross-tools
-	make
+	make -j 16
 	make install
 popd
 ```
@@ -529,25 +580,49 @@ tar -czf ${DOWNLOADDIR}/gcc-12.0.0.tar.gz gcc-12.0.0
 * 制作步骤  
 　　制作交叉编译器中的GCC，第一次编译交叉工具链的GCC需要采用精简方式进行编译和安装，否则会因为缺少目标系统的C库而导致部分内容编译链接失败，制作过程如下：
 
+```shell
+mkdir build
+pushd build
+echo building gcc for $CROSS_TARGET
+AR=ar LDFLAGS="-Wl,-rpath,${SYSDIR}/cross-tools/lib" \
+../configure --prefix=${SYSDIR}/cross-tools --build=${CROSS_HOST} --host=${CROSS_HOST} \
+--target=${CROSS_TARGET} --disable-nls \
+--with-mpfr=${SYSDIR}/cross-tools --with-gmp=${SYSDIR}/cross-tools \
+--with-mpc=${SYSDIR}/cross-tools \
+--with-newlib --disable-shared --with-sysroot=${SYSDIR}/sysroot \
+--disable-decimal-float --disable-libgomp --disable-libitm \
+--disable-libsanitizer --disable-libquadmath --disable-threads \
+--disable-target-zlib --with-system-zlib --enable-checking=release \
+--enable-languages=c
+make all-gcc -j
+make all-target-libgcc -j
+make install-strip-gcc -j
+make install-strip-target-libgcc -j
+popd build
+```
+
+
+
 ```sh
 tar xvf ${DOWNLOADDIR}/gcc-12.0.0.tar.gz -C ${BUILDDIR} 
 pushd ${BUILDDIR}/gcc-12.0.0
-	sed -i '/rdynamic/s@}"@} "@g' gcc/config/loongarch/gnu-user.h
-	mkdir build
-	pushd build
-		AR=ar LDFLAGS="-Wl,-rpath,${SYSDIR}/cross-tools/lib" \
-		../configure --prefix=${SYSDIR}/cross-tools --build=${CROSS_HOST} --host=${CROSS_HOST} \
-		             --target=${CROSS_TARGET} --disable-nls \
-		             --with-mpfr=${SYSDIR}/cross-tools --with-gmp=${SYSDIR}/cross-tools \
-		             --with-mpc=${SYSDIR}/cross-tools \
-		             --with-newlib --disable-shared --with-sysroot=${SYSDIR}/sysroot \
-		             --disable-decimal-float --disable-libgomp --disable-libitm \
-		             --disable-libsanitizer --disable-libquadmath --disable-threads \
-		             --disable-target-zlib --with-system-zlib --enable-checking=release \
-		             --enable-languages=c
-		make all-gcc all-target-libgcc
-		make install-strip-gcc install-strip-target-libgcc
-	popd
+sed -i '/rdynamic/s@}"@} "@g' gcc/config/loongarch/gnu-user.h
+rm -rf build
+mkdir build
+pushd build
+AR=ar LDFLAGS="-Wl,-rpath,${SYSDIR}/cross-tools/lib" \
+../configure --prefix=${SYSDIR}/cross-tools --build=${CROSS_HOST} --host=${CROSS_HOST} \
+--target=${CROSS_TARGET} --disable-nls \
+--with-mpfr=${SYSDIR}/cross-tools --with-gmp=${SYSDIR}/cross-tools \
+--with-mpc=${SYSDIR}/cross-tools \
+--with-newlib --disable-shared --with-sysroot=${SYSDIR}/sysroot \
+--disable-decimal-float --disable-libgomp --disable-libitm \
+--disable-libsanitizer --disable-libquadmath --disable-threads \
+--disable-target-zlib --with-system-zlib --enable-checking=release \
+--enable-languages=c
+make all-gcc all-target-libgcc -j 16
+make install-strip-gcc install-strip-target-libgcc
+popd
 popd
 ```
 
@@ -576,39 +651,53 @@ tar -czf ${DOWNLOADDIR}/glibc-2.34.tar.gz glibc-2.34
 * 制作步骤  
 　　在制作并安装好交叉工具链的Binutils、精简版的GCC以及Linux内核的头文件后就可以编译目标系统的Glibc了，制作和安装步骤如下：
 
+```shell
+git clone https://github.com/loongson/glibc.git -b loongarch_2_34_for_upstream --depth 1
+pushd glibc
+    git archive --format=tar --output ../glibc-2.34.tar "loongarch_2_34_for_upstream"
+popd
+mkdir glibc-2.34
+pushd glibc-2.34
+    tar xvf ../glibc-2.34.tar
+popd
+tar -czf ${DOWNLOADDIR}/glibc-2.34.tar.gz glibc-2.34
+```
+
+
+
 ```sh
 tar xvf ${DOWNLOADDIR}/glibc-2.34.tar.gz -C ${BUILDDIR}
 pushd ${BUILDDIR}/glibc-2.34
-    sed -i "s@5.15.0@4.15.0@g" sysdeps/unix/sysv/linux/loongarch/configure{,.ac}
-    mkdir -v build-64
-    pushd build-64
-	    BUILD_CC="gcc" CC="${CROSS_TARGET}-gcc ${BUILD64}" \
-        CXX="${CROSS_TARGET}-gcc ${BUILD64}" \
-        AR="${CROSS_TARGET}-ar" RANLIB="${CROSS_TARGET}-ranlib" \
-        ../configure --prefix=/usr --host=${CROSS_TARGET} --build=${CROSS_HOST} \
-	                 --libdir=/usr/lib64 --libexecdir=/usr/lib64/glibc \
-	                 --with-binutils=${SYSDIR}/cross-tools/bin \
-	                 --with-headers=${SYSDIR}/sysroot/usr/include \
-	                 --enable-stack-protector=strong --enable-add-ons \
-	                 --disable-werror libc_cv_slibdir=/usr/lib64 \
-	                 --enable-kernel=4.15
-		make
-		make DESTDIR=${SYSDIR}/sysroot install
-		cp -v ../nscd/nscd.conf ${SYSDIR}/sysroot/etc/nscd.conf
-		mkdir -pv ${SYSDIR}/sysroot/var/cache/nscd
-		install -v -Dm644 ../nscd/nscd.tmpfiles \
-		                  ${SYSDIR}/sysroot/usr/lib/tmpfiles.d/nscd.conf
-		install -v -Dm644 ../nscd/nscd.service \
-		                  ${SYSDIR}/sysroot/usr/lib/systemd/system/nscd.service
-	popd
-	mkdir -v build-locale
-	pushd build-locale
-		../configure --prefix=/usr --libdir=/usr/lib64 --libexecdir=/usr/lib64/glibc \
-	                 --enable-stack-protector=strong --enable-add-ons \
-	                 --disable-werror libc_cv_slibdir=/usr/lib64
-		make
-		make DESTDIR=${SYSDIR}/sysroot localedata/install-locales
-	popd
+sed -i "s@5.15.0@4.15.0@g" sysdeps/unix/sysv/linux/loongarch/configure{,.ac}
+mkdir -v build-64
+pushd build-64
+BUILD_CC="gcc" CC="${CROSS_TARGET}-gcc ${BUILD64}" \
+CXX="${CROSS_TARGET}-gcc ${BUILD64}" \
+AR="${CROSS_TARGET}-ar" RANLIB="${CROSS_TARGET}-ranlib" \
+../configure --prefix=/usr --host=${CROSS_TARGET} --build=${CROSS_HOST} \
+--libdir=/usr/lib64 --libexecdir=/usr/lib64/glibc \
+--with-binutils=${SYSDIR}/cross-tools/bin \
+--with-headers=${SYSDIR}/sysroot/usr/include \
+--enable-stack-protector=strong --enable-add-ons \
+--disable-werror libc_cv_slibdir=/usr/lib64 \
+--enable-kernel=4.15
+make -j 16
+make DESTDIR=${SYSDIR}/sysroot install
+cp -v ../nscd/nscd.conf ${SYSDIR}/sysroot/etc/nscd.conf
+mkdir -pv ${SYSDIR}/sysroot/var/cache/nscd
+install -v -Dm644 ../nscd/nscd.tmpfiles \
+${SYSDIR}/sysroot/usr/lib/tmpfiles.d/nscd.conf
+install -v -Dm644 ../nscd/nscd.service \
+${SYSDIR}/sysroot/usr/lib/systemd/system/nscd.service
+popd
+mkdir -v build-locale
+pushd build-locale
+../configure --prefix=/usr --libdir=/usr/lib64 --libexecdir=/usr/lib64/glibc \
+--enable-stack-protector=strong --enable-add-ons \
+--disable-werror libc_cv_slibdir=/usr/lib64
+make
+make DESTDIR=${SYSDIR}/sysroot localedata/install-locales
+popd
 popd
 
 ```
@@ -620,20 +709,20 @@ popd
 ```sh
 tar xvf ${DOWNLOADDIR}/gcc-12.0.0.tar.gz -C ${BUILDDIR} 
 pushd ${BUILDDIR}/gcc-12.0.0
-	sed -i '/rdynamic/s@}"@} "@g' gcc/config/loongarch/gnu-user.h
-	mkdir build-all
-	pushd build-all
-		AR=ar LDFLAGS="-Wl,-rpath,${SYSDIR}/cross-tools/lib" \
-		../configure --prefix=${SYSDIR}/cross-tools --build=${CROSS_HOST} \
-		             --host=${CROSS_HOST} --target=${CROSS_TARGET} \
-		             --with-sysroot=${SYSDIR}/sysroot --with-mpfr=${SYSDIR}/cross-tools \
-		             --with-gmp=${SYSDIR}/cross-tools --with-mpc=${SYSDIR}/cross-tools \
-		             --enable-__cxa_atexit --enable-threads=posix --with-system-zlib \
-		             --enable-libstdcxx-time --enable-checking=release \
-		             --enable-languages=c,c++,fortran,objc,obj-c++,lto
-		make
-		make install-strip
-	popd
+sed -i '/rdynamic/s@}"@} "@g' gcc/config/loongarch/gnu-user.h
+mkdir build-all
+pushd build-all
+AR=ar LDFLAGS="-Wl,-rpath,${SYSDIR}/cross-tools/lib" \
+../configure --prefix=${SYSDIR}/cross-tools --build=${CROSS_HOST} \
+--host=${CROSS_HOST} --target=${CROSS_TARGET} \
+--with-sysroot=${SYSDIR}/sysroot --with-mpfr=${SYSDIR}/cross-tools \
+--with-gmp=${SYSDIR}/cross-tools --with-mpc=${SYSDIR}/cross-tools \
+--enable-__cxa_atexit --enable-threads=posix --with-system-zlib \
+--enable-libstdcxx-time --enable-checking=release \
+--enable-languages=c,c++,fortran,objc,obj-c++,lto
+make -j 16
+make install-strip
+popd
 popd
 ```
 
@@ -1063,7 +1152,7 @@ export JOBS="-j8"
 ### 4.2 软件包的制作
 
 #### Man-Pages
-```sh
+​```sh
 tar xvf ${DOWNLOADDIR}/man-pages-5.13.tar.xz -C ${BUILDDIR}
 pushd ${BUILDDIR}/man-pages-5.13
 	make DESTDIR=${SYSDIR}/sysroot install
@@ -4798,7 +4887,7 @@ pushd ${BUILDDIR}/snappy-1.1.9
         make DESTDIR=${SYSDIR}/sysroot install
     popd
 popd
-```   
+```
 
 #### Libass
 https://github.com/libass/libass/releases/download/0.15.1/libass-0.15.1.tar.xz
@@ -6905,7 +6994,7 @@ popd
 ```sh
 sudo umount -R /tmp/liveusb
 ```
-	
+
 　　umount命令使用‵-R‵参数可以一次行把指定目录中多个挂载都卸载掉。
 
 　　接下来就可以拔出U盘，然后到龙芯3A5000的机器上去启动一下试试吧。
